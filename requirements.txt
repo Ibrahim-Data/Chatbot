@@ -1,5 +1,5 @@
 streamlit
-accelerate
-sentencepiece
-transformers>=4.38.0
+streamlit
 torch
+transformers
+safetensors
