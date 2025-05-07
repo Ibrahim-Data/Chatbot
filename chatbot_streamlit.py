@@ -11,8 +11,7 @@ st.set_page_config(
     page_icon="icon.png",
     layout="wide"
 )
-
-# --- Apply Custom Style ---
+st.title("Bulipe Tech Assistant")
 def set_custom_style(background_image_path):
     with open(background_image_path, "rb") as image:
         encoded = base64.b64encode(image.read()).decode()
@@ -41,7 +40,7 @@ def set_custom_style(background_image_path):
 set_custom_style("R.jpg")  # Your custom background image
 
 # --- Load Qwen2-0.5B-Instruct model ---
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_model():
     model_name = "Qwen/Qwen2-0.5B-Instruct"  # Smaller model for Streamlit Cloud compatibility
     quantization_config = BitsAndBytesConfig(load_in_8bit=True) if torch.cuda.is_available() else None
