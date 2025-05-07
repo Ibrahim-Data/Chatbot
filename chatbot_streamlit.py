@@ -3,17 +3,7 @@ import streamlit as st
 import torch
 import base64
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import BitsAndBytesConfig
-import streamlit.watcher.local_sources_watcher as lsw
-
-# Patch LocalSourcesWatcher to avoid torch.classes error
-def patched_extract_paths(module):
-    try:
-        return list(module.__path__._path)
-    except AttributeError:
-        return []
-
-lsw.extract_paths = lambda m: patched_extract_paths(m)
+from transformers import BitsAndBytesConfig  # For 8-bit quantization
 
 # Set Streamlit page config
 st.set_page_config(
@@ -22,55 +12,38 @@ st.set_page_config(
     layout="wide"
 )
 
-# Apply Custom Style
+# --- Apply Custom Style ---
 def set_custom_style(background_image_path):
-    try:
-        with open(background_image_path, "rb") as image:
-            encoded = base64.b64encode(image.read()).decode()
-        css = f"""
-        <style>
-        .stApp {{
-            background-image: url("data:image/png;base64,{encoded}");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }}
-        .stSidebar .sidebar-content {{
-            background-color: rgba(255, 255, 255, 0.8) !important;
-            backdrop-filter: blur(5px);
-            padding: 1rem;
-            border-radius: 10px;
-        }}
-        .main .block-container {{
-            padding: 2rem;
-        }}
-        </style>
-        """
-        st.markdown(css, unsafe_allow_html=True)
-    except FileNotFoundError:
-        st.warning("Background image not found. Using default styling.")
-        css = """
-        <style>
-        .stSidebar .sidebar-content {{
-            background-color: rgba(255, 255, 255, 0.8) !important;
-            backdrop-filter: blur(5px);
-            padding: 1rem;
-            border-radius: 10px;
-        }}
-        .main .block-container {{
-            padding: 2rem;
-        }}
-        </style>
-        """
-        st.markdown(css, unsafe_allow_html=True)
+    with open(background_image_path, "rb") as image:
+        encoded = base64.b64encode(image.read()).decode()
+    css = f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/png;base64,{encoded}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    .stSidebar .sidebar-content {{
+        background-color: rgba(255, 255, 255, 0.8) !important;
+        backdrop-filter: blur(5px);
+        padding: 1rem;
+        border-radius: 10px;
+    }}
+    .main .block-container {{
+        padding: 2rem;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
 
 set_custom_style("R.jpg")  # Your custom background image
 
-# Load Qwen2-0.5B-Instruct model
+# --- Load Qwen2-0.5B-Instruct model ---
 @st.cache_resource
 def load_model():
-    model_name = "Qwen/Qwen2-0.5B-Instruct"
+    model_name = "Qwen/Qwen2-0.5B-Instruct"  # Smaller model for Streamlit Cloud compatibility
     quantization_config = BitsAndBytesConfig(load_in_8bit=True) if torch.cuda.is_available() else None
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -83,7 +56,7 @@ def load_model():
 
 model, tokenizer = load_model()
 
-# System Prompt
+# --- System Prompt ---
 system_message = {
     "role": "system",
     "content": """You are the official AI assistant of Bulipe Tech, developed by Mohammod Ibrahim Hossain. Your primary role is to provide accurate, detailed, and clear information about Bulipe Tech's services and training programs. When a user asks about services, programs, or anything related to Bulipe Tech's offerings, always respond with a structured summary of the relevant training programs, including key details. If the query is unrelated, provide a helpful and concise response.
@@ -127,7 +100,7 @@ Bulipe Tech offers the following professional training programs:
    - Additional: Office + spoken English"""
 }
 
-# Sidebar
+# --- Sidebar ---
 with st.sidebar:
     st.title("Chat Settings")
     def clear_chat():
@@ -137,24 +110,26 @@ with st.sidebar:
         }]
     st.button("Clear Chat", on_click=clear_chat)
 
-# Initialize chat
+# --- Initialize chat ---
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant",
         "content": "Assalamu alaikum 🍁, I'm your AI assistant from Bulipe Tech. How can I help you today? 😊 Ask about our training programs or services!"
     }]
 
-# Display chat history
+# --- Display chat history ---
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# Generate response
+# --- Generate response ---
 def generate_response(prompt):
+    # Check if the prompt is related to Bulipe Tech services
     service_keywords = ["service", "services", "training", "program", "programs", "course", "courses", "offering", "offerings"]
     is_service_query = any(keyword in prompt.lower() for keyword in service_keywords)
 
     if is_service_query:
+        # Add explicit instruction to focus on services
         user_message = {
             "role": "user",
             "content": f"{prompt}\n\nPlease provide a detailed summary of Bulipe Tech's training programs, including all relevant details about each program."
@@ -167,7 +142,7 @@ def generate_response(prompt):
     inputs = tokenizer([text], return_tensors="pt").to(model.device)
     output_ids = model.generate(
         **inputs,
-        max_new_tokens=300,
+        max_new_tokens=300,  # Increased to allow detailed service responses
         do_sample=True,
         temperature=0.7,
         top_p=0.9,
@@ -177,12 +152,13 @@ def generate_response(prompt):
     generated_ids = output_ids[:, inputs.input_ids.shape[-1]:]
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
 
+    # Fallback: If the response lacks service details for a service query, append a structured summary
     if is_service_query and not any(keyword in response.lower() for keyword in service_keywords):
         response += "\n\nHere is a summary of Bulipe Tech's training programs:\n\n" + system_message["content"].split("Bulipe Tech offers")[1]
 
     return response
 
-# Handle new input
+# --- Handle new input ---
 if user_input := st.chat_input("Ask me anything..."):
     modified_input = user_input.replace("you", "Bulipe Tech").replace("You", "Bulipe Tech")
     st.session_state.messages.append({"role": "user", "content": modified_input})
