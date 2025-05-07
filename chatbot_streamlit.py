@@ -160,7 +160,7 @@ def generate_response(prompt):
 
 # --- Handle new input ---
 if user_input := st.chat_input("Ask me anything..."):
-    modified_input = user_input.replace("you", "Bulipe Tech").replace("You", "Bulipe Tech")
+    modified_input = user_input.replace("you", "Bulipe Tech").replace("You", "Bulipe Tech").replace("Your", "Bulipe Tech").replace("Yourself", "Bulipe Tech")
     st.session_state.messages.append({"role": "user", "content": modified_input})
     with st.chat_message("user"):
         st.write(user_input)
