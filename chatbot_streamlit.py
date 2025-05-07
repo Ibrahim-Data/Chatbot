@@ -2,7 +2,8 @@ import os
 import streamlit as st
 import torch
 import base64
-from transformers import AutoModelForCausalLM , AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import BitsAndBytesConfig  # For 8-bit quantization
 
 # Set Streamlit page config
 st.set_page_config(
@@ -39,14 +40,17 @@ def set_custom_style(background_image_path):
 
 set_custom_style("R.jpg")  # Your custom background image
 
-# --- Load Qwen2.5 model ---
+# --- Load Qwen2-0.5B-Instruct model ---
 @st.cache_resource
 def load_model():
-    model_name = "Qwen/Qwen2.5-1.5B-Instruct"
+    model_name = "Qwen/Qwen2-0.5B-Instruct"  # Switched to smaller model for Streamlit Cloud compatibility
+    # Use 8-bit quantization to reduce memory usage
+    quantization_config = BitsAndBytesConfig(load_in_8bit=True) if torch.cuda.is_available() else None
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto"
+        device_map="auto",
+        quantization_config=quantization_config
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     return model, tokenizer
@@ -87,13 +91,13 @@ def generate_response(prompt):
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer([text], return_tensors="pt").to(model.device)
     output_ids = model.generate(
-    **inputs,
-    max_new_tokens=200,
-    do_sample=True,
-    temperature=0.7,
-    top_p=0.9,
-    top_k=50,
-    repetition_penalty=1.1
+        **inputs,
+        max_new_tokens=200,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
+        top_k=50,
+        repetition_penalty=1.1
     )
     generated_ids = output_ids[:, inputs.input_ids.shape[-1]:]
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
