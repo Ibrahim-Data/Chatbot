@@ -43,8 +43,7 @@ set_custom_style("R.jpg")  # Your custom background image
 # --- Load Qwen2-0.5B-Instruct model ---
 @st.cache_resource
 def load_model():
-    model_name = "Qwen/Qwen2-0.5B-Instruct"  # Switched to smaller model for Streamlit Cloud compatibility
-    # Use 8-bit quantization to reduce memory usage
+    model_name = "Qwen/Qwen2-0.5B-Instruct"  # Smaller model for Streamlit Cloud compatibility
     quantization_config = BitsAndBytesConfig(load_in_8bit=True) if torch.cuda.is_available() else None
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -60,7 +59,45 @@ model, tokenizer = load_model()
 # --- System Prompt ---
 system_message = {
     "role": "system",
-    "content": "You are the official AI assistant of Bulipe Tech, developed by Mohammod Ibrahim Hossain. Your primary function is to support and inform customers by providing accurate and detailed information about the company's products, services, and training programs. You are designed to deliver clear, helpful, and technically sound assistance to enhance customer understanding and engagement with Bulipe Tech's offerings.\n\nBulipe Tech currently offers the following professional training programs:\n\n1. IT Support Specialist:\n   - Technology maintenance\n   - Troubleshooting techniques\n   - Client interaction skills\n\n2. Digital Marketing:\n   - SEO\n   - Social Media Marketing\n   - Email campaigns\n   - Analytics\n   - Plus: Microsoft Office + spoken English\n\n3. Online Sales and Marketing:\n   - Sales techniques\n   - Digital ads\n   - CRM\n   - Plus: Office + spoken English\n\n4. Social Media Specialist:\n   - Content creation\n   - Audience engagement\n   - Platform strategies\n   - Plus: Office + spoken English\n\n5. Online Posting Specialist:\n   - Posting strategies\n   - Scheduling\n   - Platform knowledge\n   - Plus: Office + spoken English\n\n6. Data Entry & Virtual Assistance:\n   - Data accuracy\n   - Virtual tasks\n   - Time management\n   - Plus: Office + spoken English"
+    "content": """You are the official AI assistant of Bulipe Tech, developed by Mohammod Ibrahim Hossain. Your primary role is to provide accurate, detailed, and clear information about Bulipe Tech's services and training programs. When a user asks about services, programs, or anything related to Bulipe Tech's offerings, always respond with a structured summary of the relevant training programs, including key details. If the query is unrelated, provide a helpful and concise response.
+
+Bulipe Tech offers the following professional training programs:
+
+1. **IT Support Specialist**:
+   - Technology maintenance
+   - Troubleshooting techniques
+   - Client interaction skills
+
+2. **Digital Marketing**:
+   - SEO
+   - Social Media Marketing
+   - Email campaigns
+   - Analytics
+   - Additional: Microsoft Office + spoken English
+
+3. **Online Sales and Marketing**:
+   - Sales techniques
+   - Digital ads
+   - CRM
+   - Additional: Office + spoken English
+
+4. **Social Media Specialist**:
+   - Content creation
+   - Audience engagement
+   - Platform strategies
+   - Additional: Office + spoken English
+
+5. **Online Posting Specialist**:
+   - Posting strategies
+   - Scheduling
+   - Platform knowledge
+   - Additional: Office + spoken English
+
+6. **Data Entry & Virtual Assistance**:
+   - Data accuracy
+   - Virtual tasks
+   - Time management
+   - Additional: Office + spoken English"""
 }
 
 # --- Sidebar ---
@@ -69,7 +106,7 @@ with st.sidebar:
     def clear_chat():
         st.session_state.messages = [{
             "role": "assistant",
-            "content": "Assalamu alaikum 🍁, I'm your AI assistant from Bulipe Tech. How can I help you today? 😊"
+            "content": "Assalamu alaikum 🍁, I'm your AI assistant from Bulipe Tech. How can I help you today? 😊 Ask about our training programs or services!"
         }]
     st.button("Clear Chat", on_click=clear_chat)
 
@@ -77,7 +114,7 @@ with st.sidebar:
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant",
-        "content": "Assalamu alaikum 🍁, I'm your AI assistant from Bulipe Tech. How can I help you today? 😊"
+        "content": "Assalamu alaikum 🍁, I'm your AI assistant from Bulipe Tech. How can I help you today? 😊 Ask about our training programs or services!"
     }]
 
 # --- Display chat history ---
@@ -87,12 +124,25 @@ for msg in st.session_state.messages:
 
 # --- Generate response ---
 def generate_response(prompt):
-    messages = [system_message] + [{"role": "user", "content": prompt}]
+    # Check if the prompt is related to Bulipe Tech services
+    service_keywords = ["service", "services", "training", "program", "programs", "course", "courses", "offering", "offerings"]
+    is_service_query = any(keyword in prompt.lower() for keyword in service_keywords)
+
+    if is_service_query:
+        # Add explicit instruction to focus on services
+        user_message = {
+            "role": "user",
+            "content": f"{prompt}\n\nPlease provide a detailed summary of Bulipe Tech's training programs, including all relevant details about each program."
+        }
+    else:
+        user_message = {"role": "user", "content": prompt}
+
+    messages = [system_message, user_message]
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tokenizer([text], return_tensors="pt").to(model.device)
     output_ids = model.generate(
         **inputs,
-        max_new_tokens=200,
+        max_new_tokens=300,  # Increased to allow detailed service responses
         do_sample=True,
         temperature=0.7,
         top_p=0.9,
@@ -101,16 +151,22 @@ def generate_response(prompt):
     )
     generated_ids = output_ids[:, inputs.input_ids.shape[-1]:]
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+
+    # Fallback: If the response lacks service details for a service query, append a structured summary
+    if is_service_query and not any(keyword in response.lower() for keyword in service_keywords):
+        response += "\n\nHere is a summary of Bulipe Tech's training programs:\n\n" + system_message["content"].split("Bulipe Tech offers")[1]
+
     return response
 
 # --- Handle new input ---
 if user_input := st.chat_input("Ask me anything..."):
-    st.session_state.messages.append({"role": "user", "content": user_input})
+    modified_input = user_input.replace("you", "Bulipe Tech").replace("You", "Bulipe Tech")
+    st.session_state.messages.append({"role": "user", "content": modified_input})
     with st.chat_message("user"):
         st.write(user_input)
 
     with st.chat_message("assistant"):
         with st.spinner("Typing..."):
-            answer = generate_response(user_input)
+            answer = generate_response(modified_input)
             st.write(answer)
     st.session_state.messages.append({"role": "assistant", "content": answer})
